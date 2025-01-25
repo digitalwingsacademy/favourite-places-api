@@ -16,12 +16,12 @@ connector = Connector()
 # Python Connector database connection function
 def getconn():
     conn = connector.connect(
-        "your_cloud_run_function_id", # Cloud SQL Instance Connection Name
+        os.environ.get("CLOUD_SQL_CONNECTION_NAME"),  # Nombre de la conexión de la instancia
         "pymysql",
-        user="ardlema",
-        password="database_password",
-        db="favourite_places",
-        ip_type="PUBLIC"  # "private" for private IP
+        user=os.environ.get("CLOUD_SQL_USERNAME"),
+        password=os.environ.get("CLOUD_SQL_PASSWORD"),
+        db=os.environ.get("CLOUD_SQL_DATABASE_NAME"),
+        ip_type="PUBLIC"  # Cambiar a "private" si se usa IP privada
     )
     return conn
 
