@@ -44,9 +44,9 @@ class Place(db.Model):
 
     # Clave primaria compuesta
     student = db.Column(db.String(255), primary_key=True)
-    place = db.Column(db.String(255), primary_key=True)  # Ahora almacena el nombre del sitio
-    coordinates = db.Column(db.String(50))  # Nueva columna para las coordenadas (latitud, longitud)
-    
+    place = db.Column(db.String(255), primary_key=True)
+    coordinates = db.Column(db.String(50))
+
     # Otras columnas
     reason = db.Column(db.String(255))
     emoji = db.Column(db.String(10), nullable=True)
@@ -55,8 +55,31 @@ class Place(db.Model):
     companions = db.Column(db.String(100), nullable=True)
     image_url = db.Column(db.String(255), nullable=True)
 
+    # Relación con Likes (ajustando el backref)
+    place_likes = db.relationship(
+        'Like',
+        backref='liked_place',  # Renombramos el backref para evitar conflictos
+        primaryjoin="and_(Place.student == foreign(Like.student), Place.place == foreign(Like.place))",
+        cascade='all, delete-orphan'
+    )
 
+class Like(db.Model):
+    __tablename__ = "likes"
 
+    # Clave primaria y columnas
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    student = db.Column(db.String(255), nullable=False)  # Clave foránea (student)
+    place = db.Column(db.String(255), nullable=False)  # Clave foránea (place)
+    ip_address = db.Column(db.String(50), nullable=False)  # Dirección IP
+
+    # Relación explícita con Place mediante claves foráneas
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ['student', 'place'],  # Columnas en Like
+            ['favourite_places.student', 'favourite_places.place'],  # Columnas en Place
+            ondelete="CASCADE"
+        ),
+    )
 
 @app.route('/')
 def get_places():
@@ -97,6 +120,57 @@ def add_place():
     db.session.add(new_place)
     db.session.commit()
     return jsonify({"msg": "Place added"})
+
+
+@app.route('/like', methods=['POST'])
+def like_place():
+    if not request.is_json:
+        return jsonify({"msg": "Missing JSON in request"}), 400
+
+    data = request.get_json()
+    user_ip = request.remote_addr  # Capturar la dirección IP del cliente
+
+    new_like = Like(
+        student=data["student"],
+        place=data["place"],
+        ip_address=user_ip
+    )
+
+    try:
+        db.session.add(new_like)
+        db.session.commit()
+        return jsonify({"msg": "Like added"})
+    except sqlalchemy.exc.IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "You have already liked this place"}), 400
+
+
+@app.route('/likes', methods=['GET'])
+def get_likes():
+    likes = db.session.query(Like.student, Like.place, db.func.count(Like.id).label("likes"))
+    likes = likes.group_by(Like.student, Like.place).all()
+
+    return jsonify([
+        {
+            "student": like.student,
+            "place": like.place,
+            "likes": like.likes
+        }
+        for like in likes
+    ])
+
+
+@app.route('/likes/<student>/<place>', methods=['GET'])
+def get_likes_for_place(student, place):
+    likes_count = db.session.query(db.func.count(Like.id)).filter(
+        Like.student == student, Like.place == place
+    ).scalar()
+
+    return jsonify({
+        "student": student,
+        "place": place,
+        "likes": likes_count
+    })
 
 # initialize the app with the extension
 if __name__ == '__main__':
